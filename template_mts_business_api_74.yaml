@@ -1,0 +1,119 @@
+zabbix_export:
+  version: '7.4'
+  template_groups:
+    - uuid: 5f162027e4ea454895e4d66fa6f61b10
+      name: Teletraffic
+  templates:
+    - uuid: ce0ac5b5972c4dea89315d13647986a7
+      template: 'MTS Business API'
+      name: 'MTS Business API — пакеты и баланс по номерам'
+      groups:
+        - name: Teletraffic
+      items:
+        - uuid: 1ddedf8f2f0740c49f5b53bd7b5a37b4
+          name: 'MTS: список номеров (raw)'
+          key: mts.names.raw
+          delay: 1d
+          history: '0'
+          value_type: TEXT
+          description: 'Внешний вызов ExternalScripts/mts_balance.py discovery. history=0 — сырьё не храним.'
+          triggers:
+            - uuid: 9c3a13e937fe409f82499f79ffd900ae
+              expression: 'nodata(/MTS Business API/mts.names.raw,2d)=1'
+              name: 'MTS: API недоступен / discovery не отработал >2 суток'
+              priority: HIGH
+      discovery_rules:
+        - uuid: 13b1f6ecac0a4a0ba6be558c6af629ce
+          name: 'MTS: номера подписки'
+          type: DEPENDENT
+          key: mts.names.discovery
+          filter:
+            evaltype: AND
+            conditions:
+              - macro: '{#MSISDN}'
+                value: '{$MTS_NUMBERS_INCLUDE}'
+              - macro: '{#REGION}'
+                value: '{$MTS_REGION_EXCLUDE}'
+                operator: NOT_MATCHES_REGEX
+          description: 'Раз в сутки подтягивает MSISDN из HierarchyStructure, названия — из GetCommentsByMSISDN (комментарии на номерах из ЛК МТС Бизнес: {#NAME}/{#NAME_SHORT}, fallback = номер). Пакеты берутся с кэшем 5 мин. Фи {$MTS_NUMBERS_INCLUDE}: по умолчанию .* (все номера); чтобы мониторить только выбранные — список через |, напр. 79161234567|79031234567. После смены макроса дождаться/запустить discovery; лишние элементы уберутся по действиям LLD. ВНИМАНИЕ: переименование item-прототипов НЕ переименовывает уже созданные items — для новых имён удалите старые items LLD (пересоздадутся на следующем discovery с сохранением ключей, история обнулится).'
+          item_prototypes:
+            - uuid: 98575b61b88642d7954a02bf12af245a
+              name: '{#NAME_SHORT} — баланс ЛиС {#ACCOUNT}'
+              key: 'mts.balance[{#MSISDN}]'
+              delay: 6h
+              history: 30d
+              value_type: FLOAT
+              units: RUB
+              description: 'Остаток на лицевом счёте {#ACCOUNT}. Кредитная модель: отрицательное = долг.'
+              trigger_prototypes:
+                - uuid: cc1c7b640bbe4a959396e9e1bca434cf
+                  expression: 'last(/MTS Business API/mts.balance[{#MSISDN}])<{$LLT.BAL_WARN}'
+                  name: '{#NAME_SHORT} ({#MSISDN}): остаток на ЛиС ниже {$LLT.BAL_WARN} RUB'
+                  priority: WARNING
+            - uuid: 639256427011497c8fa37502ac1c47e0
+              name: '{#NAME_SHORT} — остаток интернета, %'
+              key: 'mts.netpct[{#MSISDN}]'
+              delay: 6h
+              history: 30d
+              value_type: FLOAT
+              units: '%'
+              trigger_prototypes:
+                - uuid: bea0a7e0e57140189e5fca8eee48b341
+                  expression: 'count(/MTS Business API/mts.netpct[{#MSISDN}],13h,"lt",{$LLT.NET_WARN_PCT})>=2'
+                  recovery_mode: RECOVERY_EXPRESSION
+                  recovery_expression: 'last(/MTS Business API/mts.netpct[{#MSISDN}])>=({$LLT.NET_WARN_PCT}+5)'
+                  name: '{#NAME_SHORT} ({#MSISDN}): интернета осталось < {$LLT.NET_WARN_PCT}%'
+                  priority: WARNING
+            - uuid: 8b650dbf2a3e436a82cc99ba797cdddb
+              name: '{#NAME_SHORT} — остаток интернета'
+              key: 'mts.net[{#MSISDN}]'
+              delay: 6h
+              history: 30d
+              value_type: FLOAT
+              units: '!ГБ'
+              description: 'Основной пакет интернета (месячный h2o-quota, макс. BTQ; двоичные ГБ — как в ЛК МТС). Суточные сервисные квоты (telegram и т.п.) не учитываются. Безлимитные тарифы (активный «Пакет GPRS-трафика для безлимитных опций», месячного блока нет) показывают спецзначение 9999 ГБ, netpct = 100%.'
+            - uuid: 69331720fe0a4aa58cd17e9f506bdb7a
+              name: '{#NAME_SHORT} — остаток SMS'
+              key: 'mts.sms[{#MSISDN}]'
+              delay: 6h
+              history: 30d
+              value_type: FLOAT
+              trigger_prototypes:
+                - uuid: d73033c957ce442387119d8fcfad9187
+                  expression: 'last(/MTS Business API/mts.sms[{#MSISDN}])<{$LLT.SMS_WARN}'
+                  name: '{#NAME_SHORT} ({#MSISDN}): SMS осталось < {$LLT.SMS_WARN}'
+                  priority: WARNING
+            - uuid: 71b49bd337e346209c3641ce81ea3c8f
+              name: '{#NAME_SHORT} — остаток минут'
+              key: 'mts.voice[{#MSISDN}]'
+              delay: 6h
+              history: 30d
+              value_type: FLOAT
+              units: '!мин.'
+              description: 'Сумма активных счётчиков минут (единицы SECOND/MINUTE).'
+              trigger_prototypes:
+                - uuid: 19011dae1f6140778ec08bce0f02a031
+                  expression: 'last(/MTS Business API/mts.voice[{#MSISDN}])<{$LLT.VOICE_WARN_MIN}'
+                  name: '{#NAME_SHORT} ({#MSISDN}): минут осталось < {$LLT.VOICE_WARN_MIN}'
+                  priority: WARNING
+          master_item:
+            key: mts.names.raw
+      macros:
+        - macro: '{$LLT.BAL_WARN}'
+          value: '-30000'
+          description: 'Порог остатка ЛиС в RUB (кредитная модель — обычно минус). Триггер при остатке НИЖЕ значения.'
+        - macro: '{$LLT.NET_WARN_PCT}'
+          value: '2'
+          description: '% остатка основного пакета интернета до тревоги (с гистерезисом +5% на восстановление).'
+        - macro: '{$LLT.SMS_WARN}'
+          value: '50'
+          description: 'SMS до тревоги.'
+        - macro: '{$LLT.VOICE_WARN_MIN}'
+          value: '60'
+          description: 'Минут до тревоги.'
+        - macro: '{$MTS_NUMBERS_INCLUDE}'
+          value: '.*'
+          description: 'Фильтр LLD по номерам (MATCHES_REGEX). По умолчанию .* — создаются все номера. Чтобы оставить только выбранные: список через |, напр. 79161234567|79031112233 (11 цифр, без пробелов). Задаётся на хосте, привязанном к шаблону.'
+        - macro: '{$MTS_REGION_EXCLUDE}'
+          value: ~none~
+          description: 'regex региона-исключения LLD. По умолчанию не матчит ничего. Чтобы исключить МР Москва: значение "Москва".'

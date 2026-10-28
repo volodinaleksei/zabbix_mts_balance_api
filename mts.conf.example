@@ -1,0 +1,12 @@
+# МТС Бизнес API — учётные данные и настройки кэша
+# Скопируйте в /etc/zabbix/scripts/mts.conf и заполните значениями из ЛК МТС Бизнес
+# (Раздел API кабинета МТС Бизнес). Не коммитьте настоящий mts.conf в git!
+client_id=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+client_secret=ваш_секретный_ключ
+cache_dir=/var/tmp
+# TTL кэша ответов API, сек (5 item на номер бьются в 1 запрос за интервал)
+cache_ttl=300
+# минимальный интервал между запросами к API, сек (защита от 429)
+min_interval=1.5
+# размер страницы HierarchyStructure (без параметра API режет список)
+page_size=500

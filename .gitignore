@@ -1,0 +1,5 @@
+# секреты — никогда в git
+mts.conf
+*.local
+__pycache__/
+*.pyc
